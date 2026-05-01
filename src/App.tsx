@@ -94,25 +94,53 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const removeSkipListeners = () => {
+      window.removeEventListener('keydown', skipBoot);
+      window.removeEventListener('pointerdown', skipBoot);
+    };
+
+    const completeBoot = () => {
+      setBootPhase('done');
+      removeSkipListeners();
+    };
+
+    let skipCompletionTimer: number | null = null;
+
+    function skipBoot() {
+      setBootPhase((current) => {
+        if (current === 'done') {
+          return current;
+        }
+
+        return 'exiting';
+      });
+
+      if (skipCompletionTimer) {
+        window.clearTimeout(skipCompletionTimer);
+      }
+
+      skipCompletionTimer = window.setTimeout(() => {
+        completeBoot();
+      }, 420);
+    }
+
     const stageTimers = [
       window.setTimeout(() => setBootStage(1), 450),
       window.setTimeout(() => setBootStage(2), 900),
       window.setTimeout(() => setBootStage(3), 1300),
       window.setTimeout(() => setBootPhase('exiting'), 1850),
-      window.setTimeout(() => setBootPhase('done'), 2350),
+      window.setTimeout(() => completeBoot(), 2350),
     ];
 
-    const skipBoot = () => {
-      setBootPhase('exiting');
-      window.setTimeout(() => setBootPhase('done'), 420);
-    };
     window.addEventListener('keydown', skipBoot, { once: true });
     window.addEventListener('pointerdown', skipBoot, { once: true });
 
     return () => {
       stageTimers.forEach((timer) => window.clearTimeout(timer));
-      window.removeEventListener('keydown', skipBoot);
-      window.removeEventListener('pointerdown', skipBoot);
+      if (skipCompletionTimer) {
+        window.clearTimeout(skipCompletionTimer);
+      }
+      removeSkipListeners();
     };
   }, []);
 
