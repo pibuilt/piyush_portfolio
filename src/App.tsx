@@ -46,6 +46,7 @@ function App() {
   const [lastCommand, setLastCommand] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [showCommandTab, setShowCommandTab] = useState(false);
+  const [uptimeMinutes, setUptimeMinutes] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -80,6 +81,14 @@ function App() {
     return () => {
       timersRef.current.forEach((timer) => window.clearTimeout(timer));
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setUptimeMinutes((value) => value + 1);
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -232,6 +241,12 @@ function App() {
 
       <main className="terminal-page">
         <section className="terminal-hero">
+          <div className="terminal-status-bar" aria-label="Terminal session metadata">
+            <span>shell: pwsh</span>
+            <span>mode: portfolio-runtime</span>
+            <span>uptime: {uptimeMinutes}m</span>
+          </div>
+
           <div className="banner-title" aria-label="Piyush Bhuyan banner">
             PIYUSH BHUYAN
           </div>
@@ -250,7 +265,7 @@ function App() {
           </nav>
         </section>
 
-        <div className="hint-line">Start typing to see available commands.</div>
+        <div className="hint-line">Type a command and press Enter. Start with /help.</div>
 
         <section className="transcript">
           {currentTurn ? <TurnBlock turn={currentTurn} /> : null}
