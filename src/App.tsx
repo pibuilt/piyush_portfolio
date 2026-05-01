@@ -38,6 +38,7 @@ commands.forEach((command) => {
 
 const processingDurationMs = 1500;
 const resumeHref = `${import.meta.env.BASE_URL}Piyush_Bhuyan_Resume.pdf`;
+const bootSessionKey = 'portfolio_boot_seen_v1';
 
 function App() {
   const [query, setQuery] = useState('/');
@@ -48,7 +49,13 @@ function App() {
   const [showCommandTab, setShowCommandTab] = useState(false);
   const [uptimeMinutes, setUptimeMinutes] = useState(0);
   const [bootStage, setBootStage] = useState(0);
-  const [bootPhase, setBootPhase] = useState<'booting' | 'exiting' | 'done'>('booting');
+  const [bootPhase, setBootPhase] = useState<'booting' | 'exiting' | 'done'>(() => {
+    if (typeof window === 'undefined') {
+      return 'booting';
+    }
+
+    return window.sessionStorage.getItem(bootSessionKey) === '1' ? 'done' : 'booting';
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -94,6 +101,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (bootPhase === 'done') {
+      return;
+    }
+
     const removeSkipListeners = () => {
       window.removeEventListener('keydown', skipBoot);
       window.removeEventListener('pointerdown', skipBoot);
@@ -101,6 +112,7 @@ function App() {
 
     const completeBoot = () => {
       setBootPhase('done');
+      window.sessionStorage.setItem(bootSessionKey, '1');
       removeSkipListeners();
     };
 
@@ -142,7 +154,7 @@ function App() {
       }
       removeSkipListeners();
     };
-  }, []);
+  }, [bootPhase]);
 
   useEffect(() => {
     if (!isBusy) {
