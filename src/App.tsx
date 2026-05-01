@@ -47,6 +47,8 @@ function App() {
   const [inputFocused, setInputFocused] = useState(false);
   const [showCommandTab, setShowCommandTab] = useState(false);
   const [uptimeMinutes, setUptimeMinutes] = useState(0);
+  const [bootStage, setBootStage] = useState(0);
+  const [bootPhase, setBootPhase] = useState<'booting' | 'exiting' | 'done'>('booting');
   const inputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -89,6 +91,29 @@ function App() {
     }, 60_000);
 
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const stageTimers = [
+      window.setTimeout(() => setBootStage(1), 450),
+      window.setTimeout(() => setBootStage(2), 900),
+      window.setTimeout(() => setBootStage(3), 1300),
+      window.setTimeout(() => setBootPhase('exiting'), 1850),
+      window.setTimeout(() => setBootPhase('done'), 2350),
+    ];
+
+    const skipBoot = () => {
+      setBootPhase('exiting');
+      window.setTimeout(() => setBootPhase('done'), 420);
+    };
+    window.addEventListener('keydown', skipBoot, { once: true });
+    window.addEventListener('pointerdown', skipBoot, { once: true });
+
+    return () => {
+      stageTimers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener('keydown', skipBoot);
+      window.removeEventListener('pointerdown', skipBoot);
+    };
   }, []);
 
   useEffect(() => {
@@ -207,7 +232,9 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${bootPhase !== 'done' ? 'preboot' : 'ready'}`}>
+      {bootPhase !== 'done' ? <BootSequence stage={bootStage} exiting={bootPhase === 'exiting'} /> : null}
+
       <button
         type="button"
         className={`command-tab-toggle ${showCommandTab ? 'open' : ''}`}
@@ -288,6 +315,38 @@ function App() {
       </main>
     </div>
   );
+}
+
+function BootSequence({ stage, exiting }: { stage: number; exiting: boolean }) {
+  return (
+    <div className={`boot-overlay${exiting ? ' exiting' : ''}`} role="status" aria-live="polite" aria-label="Initializing terminal">
+      <div className="boot-shell">
+        <div className="boot-title">portfolio runtime // boot</div>
+        <div className="boot-lines">
+          <BootLine ready stage={stage >= 0}>
+            [ok] loading claude-style interface kernel
+          </BootLine>
+          <BootLine ready stage={stage >= 1}>
+            [ok] calibrating phosphor grid and scanline driver
+          </BootLine>
+          <BootLine ready stage={stage >= 2}>
+            [ok] mounting command modules and profile index
+          </BootLine>
+          <BootLine ready stage={stage >= 3}>
+            [ok] session ready // press any key to skip future wait
+          </BootLine>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BootLine({ ready, stage, children }: { ready: boolean; stage: boolean; children: ReactNode }) {
+  if (!stage) {
+    return <div className="boot-line pending">...</div>;
+  }
+
+  return <div className={`boot-line${ready ? ' ready' : ''}`}>{children}</div>;
 }
 
 function TurnBlock({ turn }: { turn: Turn }) {
