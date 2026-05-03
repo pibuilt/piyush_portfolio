@@ -101,7 +101,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (bootPhase === 'done') {
+    // Only orchestrate staged lines while still booting. If this effect depended on bootPhase ===
+    // 'exiting', cleanup would clear the delayed "done" timer and the overlay could stay (invisible
+    // after exit animation but still capturing clicks) until a skip handler fired on user input.
+    if (bootPhase !== 'booting') {
       return;
     }
 
@@ -110,30 +113,8 @@ function App() {
       window.removeEventListener('pointerdown', skipBoot);
     };
 
-    const completeBoot = () => {
-      setBootPhase('done');
-      window.sessionStorage.setItem(bootSessionKey, '1');
-      removeSkipListeners();
-    };
-
-    let skipCompletionTimer: number | null = null;
-
     function skipBoot() {
-      setBootPhase((current) => {
-        if (current === 'done') {
-          return current;
-        }
-
-        return 'exiting';
-      });
-
-      if (skipCompletionTimer) {
-        window.clearTimeout(skipCompletionTimer);
-      }
-
-      skipCompletionTimer = window.setTimeout(() => {
-        completeBoot();
-      }, 420);
+      setBootPhase((current) => (current === 'done' ? current : 'exiting'));
     }
 
     const stageTimers = [
@@ -141,7 +122,6 @@ function App() {
       window.setTimeout(() => setBootStage(2), 900),
       window.setTimeout(() => setBootStage(3), 1300),
       window.setTimeout(() => setBootPhase('exiting'), 1850),
-      window.setTimeout(() => completeBoot(), 2350),
     ];
 
     window.addEventListener('keydown', skipBoot, { once: true });
@@ -149,11 +129,23 @@ function App() {
 
     return () => {
       stageTimers.forEach((timer) => window.clearTimeout(timer));
-      if (skipCompletionTimer) {
-        window.clearTimeout(skipCompletionTimer);
-      }
       removeSkipListeners();
     };
+  }, [bootPhase]);
+
+  useEffect(() => {
+    if (bootPhase !== 'exiting') {
+      return;
+    }
+
+    // Matches `boot-exit` in styles.css (~420ms) with a short buffer before unmounting.
+    const bootExitMs = 460;
+    const completionTimer = window.setTimeout(() => {
+      setBootPhase('done');
+      window.sessionStorage.setItem(bootSessionKey, '1');
+    }, bootExitMs);
+
+    return () => window.clearTimeout(completionTimer);
   }, [bootPhase]);
 
   useEffect(() => {
