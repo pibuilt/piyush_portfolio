@@ -41,13 +41,12 @@ const resumeHref = `${import.meta.env.BASE_URL}Piyush_Bhuyan_Resume.pdf`;
 const bootSessionKey = 'portfolio_boot_seen_v1';
 
 function App() {
-  const [query, setQuery] = useState('/');
+  const [query, setQuery] = useState('');
   const [currentTurn, setCurrentTurn] = useState<Turn | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [lastCommand, setLastCommand] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [showCommandTab, setShowCommandTab] = useState(false);
-  const [uptimeMinutes, setUptimeMinutes] = useState(0);
   const [bootStage, setBootStage] = useState(0);
   const [bootPhase, setBootPhase] = useState<'booting' | 'exiting' | 'done'>(() => {
     if (typeof window === 'undefined') {
@@ -59,7 +58,7 @@ function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<number[]>([]);
 
-  const normalizedQuery = query.trim().replace(/^\//, '').toLowerCase();
+  const normalizedQuery = query.trim().replace(/^\/+/, '').toLowerCase();
   const isBusy = currentTurn?.status === 'processing';
 
   const suggestions = useMemo(() => {
@@ -67,44 +66,53 @@ function App() {
       return [];
     }
 
-    const scoreCommand = (command: (typeof commands)[number]) => {
+    const getSearchTerms = (command: (typeof commands)[number]) => {
       const label = command.label.replace('/', '').toLowerCase();
       const aliases = command.aliases.map((alias) => alias.toLowerCase());
+      const terms = [command.id.toLowerCase(), label, ...aliases];
+
+      return { label, aliases, terms };
+    };
+
+    const scoreCommand = (command: (typeof commands)[number]) => {
+      const { label, aliases } = getSearchTerms(command);
 
       if (label === normalizedQuery || command.id === normalizedQuery || aliases.includes(normalizedQuery)) {
-        return 5;
+        return 6;
       }
 
       if (label.startsWith(normalizedQuery) || command.id.startsWith(normalizedQuery)) {
-        return 4;
+        return 5;
       }
 
       if (aliases.some((alias) => alias.startsWith(normalizedQuery))) {
+        return 4;
+      }
+
+      if (label.includes(normalizedQuery) || command.id.includes(normalizedQuery)) {
         return 3;
       }
 
-      if (command.description.toLowerCase().includes(normalizedQuery) || command.sample.toLowerCase().includes(normalizedQuery)) {
+      if (aliases.some((alias) => alias.includes(normalizedQuery))) {
         return 2;
       }
 
-      return 1;
+      return 0;
     };
 
     return commands
       .filter((command) => {
-        const haystack = [
-          command.id,
-          command.label,
-          command.description,
-          command.sample,
-          ...command.aliases,
-        ]
-          .join(' ')
-          .toLowerCase();
-
-        return haystack.includes(normalizedQuery);
+        const { terms } = getSearchTerms(command);
+        return terms.some((term) => term.includes(normalizedQuery));
       })
-      .sort((left, right) => scoreCommand(right) - scoreCommand(left));
+      .sort((left, right) => {
+        const scoreDifference = scoreCommand(right) - scoreCommand(left);
+        if (scoreDifference !== 0) {
+          return scoreDifference;
+        }
+
+        return left.label.localeCompare(right.label);
+      });
   }, [normalizedQuery]);
 
   useEffect(() => {
@@ -115,14 +123,6 @@ function App() {
     return () => {
       timersRef.current.forEach((timer) => window.clearTimeout(timer));
     };
-  }, []);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setUptimeMinutes((value) => value + 1);
-    }, 60_000);
-
-    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -195,7 +195,7 @@ function App() {
 
   const executeCommand = (rawValue: string) => {
     const rawTrimmed = rawValue.trim();
-    const sanitized = rawTrimmed.replace(/^\//, '').toLowerCase();
+    const sanitized = rawTrimmed.replace(/^\/+/, '').toLowerCase();
 
     if (!sanitized || isBusy) {
       return;
@@ -205,7 +205,7 @@ function App() {
     const nextCommand = commandLookup.get(sanitized);
 
     setLastCommand(sanitized);
-    setQuery('/');
+    setQuery('');
     setShowCommandTab(false);
 
     if (!nextCommand) {
@@ -283,7 +283,7 @@ function App() {
     }
 
     if (event.key === 'Escape') {
-      setQuery('/');
+      setQuery('');
       setShowCommandTab(false);
       inputRef.current?.blur();
     }
@@ -298,13 +298,13 @@ function App() {
         className={`command-tab-toggle ${showCommandTab ? 'open' : ''}`}
         onClick={() => setShowCommandTab((current) => !current)}
       >
-        quick cheatsheet
+        menu
       </button>
 
       {showCommandTab ? (
         <aside className="command-tab-panel">
           <div className="command-tab-head">
-            <span>quick cheatsheet</span>
+            <span>menu</span>
             <button type="button" onClick={() => setShowCommandTab(false)}>
               close
             </button>
@@ -329,7 +329,6 @@ function App() {
           <div className="terminal-status-bar" aria-label="Terminal session metadata">
             <span>shell: pwsh</span>
             <span>mode: portfolio-runtime</span>
-            <span>uptime: {uptimeMinutes}m</span>
           </div>
 
           <div className="banner-title" aria-label="Piyush Bhuyan banner">
@@ -722,9 +721,9 @@ function PromptInput({
         <input
           ref={inputRef}
           id="command-input"
-          value={query.replace(/^\//, '')}
+          value={query}
           onChange={(event) => {
-            setQuery(`/${event.target.value}`);
+            setQuery(event.target.value);
           }}
           onKeyDown={onKeyDown}
           onFocus={() => setInputFocused(true)}
