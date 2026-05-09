@@ -67,19 +67,44 @@ function App() {
       return [];
     }
 
-    return commands.filter((command) => {
-      const haystack = [
-        command.id,
-        command.label,
-        command.description,
-        command.sample,
-        ...command.aliases,
-      ]
-        .join(' ')
-        .toLowerCase();
+    const scoreCommand = (command: (typeof commands)[number]) => {
+      const label = command.label.replace('/', '').toLowerCase();
+      const aliases = command.aliases.map((alias) => alias.toLowerCase());
 
-      return haystack.includes(normalizedQuery);
-    });
+      if (label === normalizedQuery || command.id === normalizedQuery || aliases.includes(normalizedQuery)) {
+        return 5;
+      }
+
+      if (label.startsWith(normalizedQuery) || command.id.startsWith(normalizedQuery)) {
+        return 4;
+      }
+
+      if (aliases.some((alias) => alias.startsWith(normalizedQuery))) {
+        return 3;
+      }
+
+      if (command.description.toLowerCase().includes(normalizedQuery) || command.sample.toLowerCase().includes(normalizedQuery)) {
+        return 2;
+      }
+
+      return 1;
+    };
+
+    return commands
+      .filter((command) => {
+        const haystack = [
+          command.id,
+          command.label,
+          command.description,
+          command.sample,
+          ...command.aliases,
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return haystack.includes(normalizedQuery);
+      })
+      .sort((left, right) => scoreCommand(right) - scoreCommand(left));
   }, [normalizedQuery]);
 
   useEffect(() => {
@@ -251,7 +276,8 @@ function App() {
 
     if (event.key === 'Enter') {
       event.preventDefault();
-      const selected = suggestions[highlightedIndex]?.label ?? query;
+      const exactMatch = commandLookup.get(normalizedQuery);
+      const selected = exactMatch ? `/${exactMatch}` : suggestions[highlightedIndex]?.label ?? query;
       executeCommand(selected);
       return;
     }
