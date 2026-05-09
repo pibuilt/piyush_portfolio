@@ -1,4 +1,4 @@
-# Piyush Bhuyan Portfolio
+# Piyush Bhuyan Portfolio.
 
 Terminal-first portfolio built with React, TypeScript, and Vite.
 
@@ -101,7 +101,7 @@ This repo is configured to deploy automatically on every push to `main`.
 `vite.config.ts` is set to:
 
 ```ts
-base: '/piyush_portfolio/'
+base: "/piyush_portfolio/";
 ```
 
 This is required because the site is hosted under a repository path.
@@ -139,4 +139,3 @@ Once workflow completes, the site is published automatically.
 - Fully static app (no backend/API required)
 - Deploy artifacts are generated in `dist/`
 - Resume file is served from `public/Piyush_Bhuyan_Resume.pdf`
-
