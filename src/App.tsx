@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import {
   CommandId,
   commands,
@@ -15,18 +15,20 @@ import {
   certifications,
 } from './data/portfolio';
 
+type HiddenCommandId = 'piyush-bhuyan';
+type CommandTarget = CommandId | HiddenCommandId;
 type TurnStatus = 'processing' | 'done' | 'error';
 type TurnStage = 'scaffolding' | 'thinking';
 
 type Turn = {
   rawCommand: string;
-  resolved: CommandId | null;
+  resolved: CommandTarget | null;
   status: TurnStatus;
   stage?: TurnStage;
   missingCommand?: string;
 };
 
-const commandLookup = new Map<string, CommandId>();
+const commandLookup = new Map<string, CommandTarget>();
 
 commands.forEach((command) => {
   commandLookup.set(command.id, command.id);
@@ -39,6 +41,9 @@ commands.forEach((command) => {
 const processingDurationMs = 1500;
 const resumeHref = `${import.meta.env.BASE_URL}Piyush_Bhuyan_Resume.pdf`;
 const bootSessionKey = 'portfolio_boot_seen_v1';
+const defaultBannerPosition = { x: 24, y: 44 };
+const hiddenBannerCommand = '/piyush bhuyan';
+const hiddenBannerCommandNormalized = 'piyush bhuyan';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -47,6 +52,12 @@ function App() {
   const [lastCommand, setLastCommand] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [showCommandTab, setShowCommandTab] = useState(false);
+  const [bannerPosition, setBannerPosition] = useState(defaultBannerPosition);
+  const [isDraggingBanner, setIsDraggingBanner] = useState(false);
+  const [isBannerCommanding, setIsBannerCommanding] = useState(false);
+  const [isBannerHidden, setIsBannerHidden] = useState(false);
+  const [secretStage, setSecretStage] = useState(0);
+  const [secretPhase, setSecretPhase] = useState<'idle' | 'booting' | 'exiting'>('idle');
   const [bootStage, setBootStage] = useState(0);
   const [bootPhase, setBootPhase] = useState<'booting' | 'exiting' | 'done'>(() => {
     if (typeof window === 'undefined') {
@@ -56,10 +67,21 @@ function App() {
     return window.sessionStorage.getItem(bootSessionKey) === '1' ? 'done' : 'booting';
   });
   const inputRef = useRef<HTMLInputElement>(null);
+  const promptShellRef = useRef<HTMLLabelElement>(null);
+  const terminalPageRef = useRef<HTMLElement>(null);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const bannerDragRef = useRef<{
+    pointerId: number;
+    originX: number;
+    originY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
   const timersRef = useRef<number[]>([]);
 
   const normalizedQuery = query.trim().replace(/^\/+/, '').toLowerCase();
   const isBusy = currentTurn?.status === 'processing';
+  const isSecretThemeActive = isBannerCommanding || secretPhase !== 'idle' || isBannerHidden;
 
   const suggestions = useMemo(() => {
     if (!normalizedQuery) {
@@ -179,9 +201,123 @@ function App() {
     }
   }, [isBusy]);
 
+  useEffect(() => {
+    document.body.classList.toggle('secret-mode', isSecretThemeActive);
+
+    return () => {
+      document.body.classList.remove('secret-mode');
+    };
+  }, [isSecretThemeActive]);
+
+  useEffect(() => {
+    if (!isDraggingBanner) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = bannerDragRef.current;
+      const page = terminalPageRef.current;
+      const banner = bannerRef.current;
+
+      if (!dragState || !page || !banner || event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      const minX = 16;
+      const minY = 16;
+      const maxX = Math.max(minX, page.clientWidth - banner.offsetWidth - 16);
+      const maxY = Math.max(minY, page.clientHeight - banner.offsetHeight - 16);
+      const nextX = Math.min(
+        maxX,
+        Math.max(minX, dragState.startX + (event.clientX - dragState.originX)),
+      );
+      const nextY = Math.min(
+        maxY,
+        Math.max(minY, dragState.startY + (event.clientY - dragState.originY)),
+      );
+
+      setBannerPosition({ x: nextX, y: nextY });
+    };
+
+    const handlePointerEnd = (event: PointerEvent) => {
+      const dragState = bannerDragRef.current;
+      if (!dragState || event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      const promptShell = promptShellRef.current;
+      const banner = bannerRef.current;
+
+      bannerDragRef.current = null;
+      setIsDraggingBanner(false);
+
+      if (!promptShell || !banner) {
+        return;
+      }
+
+      const promptRect = promptShell.getBoundingClientRect();
+      const bannerRect = banner.getBoundingClientRect();
+      const droppedInsidePrompt =
+        bannerRect.right >= promptRect.left &&
+        bannerRect.left <= promptRect.right &&
+        bannerRect.bottom >= promptRect.top &&
+        bannerRect.top <= promptRect.bottom;
+
+      if (!droppedInsidePrompt) {
+        return;
+      }
+
+      setIsBannerCommanding(true);
+      setQuery(hiddenBannerCommand);
+      setSecretStage(0);
+      setSecretPhase('booting');
+
+      scheduleTimer(() => setSecretStage(1), 170);
+      scheduleTimer(() => setSecretStage(2), 380);
+      scheduleTimer(() => setSecretStage(3), 640);
+      scheduleTimer(() => setSecretPhase('exiting'), 900);
+      scheduleTimer(() => {
+        setIsBannerHidden(true);
+        executeCommand(hiddenBannerCommand, { allowHidden: true });
+        setBannerPosition(defaultBannerPosition);
+        setIsBannerCommanding(false);
+        setSecretPhase('idle');
+      }, 1120);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+    };
+  }, [isDraggingBanner]);
+
   const scheduleTimer = (callback: () => void, delay: number) => {
     const timer = window.setTimeout(callback, delay);
     timersRef.current.push(timer);
+  };
+
+  const handleBannerPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isBannerCommanding) {
+      return;
+    }
+
+    bannerDragRef.current = {
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      originY: event.clientY,
+      startX: bannerPosition.x,
+      startY: bannerPosition.y,
+    };
+    setIsDraggingBanner(true);
+  };
+
+  const resetBannerPosition = () => {
+    setBannerPosition(defaultBannerPosition);
   };
 
   const triggerResumeDownload = () => {
@@ -193,7 +329,7 @@ function App() {
     anchor.remove();
   };
 
-  const executeCommand = (rawValue: string) => {
+  const executeCommand = (rawValue: string, options?: { allowHidden?: boolean }) => {
     const rawTrimmed = rawValue.trim();
     const sanitized = rawTrimmed.replace(/^\/+/, '').toLowerCase();
 
@@ -202,7 +338,10 @@ function App() {
     }
 
     const rawCommand = rawTrimmed.startsWith('/') ? rawTrimmed : `/${sanitized}`;
-    const nextCommand = commandLookup.get(sanitized);
+    const nextCommand =
+      options?.allowHidden && sanitized === hiddenBannerCommandNormalized
+        ? 'piyush-bhuyan'
+        : commandLookup.get(sanitized);
 
     setLastCommand(sanitized);
     setQuery('');
@@ -324,15 +463,29 @@ function App() {
         </aside>
       ) : null}
 
-      <main className="terminal-page">
-        <section className="terminal-hero">
+      <main
+        ref={terminalPageRef}
+        className={`terminal-page${isDraggingBanner ? ' dragging-banner' : ''}${isBannerCommanding ? ' banner-commanding' : ''}`}
+      >
+        {secretPhase !== 'idle' ? <SecretSequence stage={secretStage} exiting={secretPhase === 'exiting'} /> : null}
+
+        {!isBannerHidden ? (
+          <div
+            ref={bannerRef}
+            className={`banner-title floating${isDraggingBanner ? ' dragging' : ''}${isBannerCommanding ? ' morphing' : ''}`}
+            aria-label="Piyush Bhuyan banner"
+            style={{ left: `${bannerPosition.x}px`, top: `${bannerPosition.y}px` }}
+            onPointerDown={handleBannerPointerDown}
+            onDoubleClick={resetBannerPosition}
+          >
+            PIYUSH BHUYAN
+          </div>
+        ) : null}
+
+        <section className={`terminal-hero${isBannerHidden ? ' banner-hidden' : ''}`}>
           <div className="terminal-status-bar" aria-label="Terminal session metadata">
             <span>shell: pwsh</span>
             <span>mode: portfolio-runtime</span>
-          </div>
-
-          <div className="banner-title" aria-label="Piyush Bhuyan banner">
-            PIYUSH BHUYAN
           </div>
 
           <nav className="meta-row" aria-label="Links">
@@ -356,6 +509,7 @@ function App() {
 
           {!isBusy ? (
             <PromptInput
+              promptShellRef={promptShellRef}
               inputRef={inputRef}
               query={query}
               setQuery={setQuery}
@@ -406,6 +560,30 @@ function BootLine({ ready, stage, children }: { ready: boolean; stage: boolean; 
   return <div className={`boot-line${ready ? ' ready' : ''}`}>{children}</div>;
 }
 
+function SecretSequence({ stage, exiting }: { stage: number; exiting: boolean }) {
+  return (
+    <div className={`secret-sequence${exiting ? ' exiting' : ''}`} aria-hidden="true">
+      <div className="secret-shell">
+        <div className="secret-title">hidden route // engaged</div>
+        <div className="boot-lines">
+          <BootLine ready stage={stage >= 0}>
+            [ok] banner token accepted
+          </BootLine>
+          <BootLine ready stage={stage >= 1}>
+            [ok] resolving private profile branch
+          </BootLine>
+          <BootLine ready stage={stage >= 2}>
+            [ok] lifting public mask
+          </BootLine>
+          <BootLine ready stage={stage >= 3}>
+            [ok] secret command ready
+          </BootLine>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TurnBlock({ turn }: { turn: Turn }) {
   return (
     <div className={`turn-block ${turn.status}`}>
@@ -418,7 +596,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
   );
 }
 
-function ProcessingOutput({ stage, commandId }: { stage: TurnStage; commandId: CommandId }) {
+function ProcessingOutput({ stage, commandId }: { stage: TurnStage; commandId: CommandTarget }) {
   return (
     <div className="terminal-stack">
       <TerminalLine accent>
@@ -449,7 +627,40 @@ function ErrorOutput({ missingCommand }: { missingCommand: string }) {
   );
 }
 
-function CommandOutput({ commandId }: { commandId: CommandId }) {
+function CommandOutput({ commandId }: { commandId: CommandTarget }) {
+  if (commandId === 'piyush-bhuyan') {
+    return (
+      <div className="terminal-stack">
+        <SecretCallout />
+        <TerminalLine variant="heading">/piyush bhuyan</TerminalLine>
+        <TerminalLine variant="body">
+          Beyond the terminal, I am basically a mix of engineering, organized chaos, and very specific obsessions.
+        </TerminalLine>
+        <TerminalGap />
+        <TerminalLine variant="label">A few things about me</TerminalLine>
+        <TerminalLine variant="list">
+          - major DC fan: comics, vintage finds, hard-to-track single issues, action figures, and anything DC really
+        </TerminalLine>
+        <TerminalLine variant="list">
+          - big fraghead: I love collecting perfumes, especially the niche and weirdly memorable kind
+        </TerminalLine>
+        <TerminalLine variant="list">
+          - open-source LLM enthusiast: I enjoy good models, local experimentation, and not paying for credits when I do not have to
+        </TerminalLine>
+        <TerminalLine variant="list">
+          - MUN / Toastmasters person: I like speaking, debating, hosting rooms, and organizing fast-moving chaos
+        </TerminalLine>
+        <TerminalGap />
+        <TerminalLine variant="body">
+          So yes, I build AI systems and backend workflows. But I also care a lot about taste, storytelling, and energy.
+        </TerminalLine>
+        <TerminalLine variant="body">
+          If you found this, you were curious enough to keep digging. I respect that.
+        </TerminalLine>
+      </div>
+    );
+  }
+
   if (commandId === 'help') {
     return (
       <div className="terminal-stack">
@@ -658,6 +869,19 @@ function InlineImpactGrid({
   );
 }
 
+function SecretCallout() {
+  return (
+    <div className="secret-callout" role="note" aria-label="Secret easter egg found">
+      <span className="secret-callout-icon" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+          <path d="M8 18h4V9a2 2 0 1 1 4 0v9h1v-6a2 2 0 1 1 4 0v6h1v-4a2 2 0 1 1 4 0v9c0 4.4-3.6 8-8 8h-6l-6-8a2 2 0 0 1 2-3Z" />
+        </svg>
+      </span>
+      <span>You found the secret easter egg.</span>
+    </div>
+  );
+}
+
 function MetricGlyph({ kind }: { kind: 'impact' | 'automation' | 'scale' }) {
   if (kind === 'impact') {
     return (
@@ -692,6 +916,7 @@ function MetricGlyph({ kind }: { kind: 'impact' | 'automation' | 'scale' }) {
 }
 
 function PromptInput({
+  promptShellRef,
   inputRef,
   query,
   setQuery,
@@ -703,6 +928,7 @@ function PromptInput({
   executeCommand,
   normalizedQuery,
 }: {
+  promptShellRef: React.RefObject<HTMLLabelElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
   query: string;
   setQuery: (value: string) => void;
@@ -716,7 +942,7 @@ function PromptInput({
 }) {
   return (
     <div className="prompt-block">
-      <label className="command-input-shell" htmlFor="command-input">
+      <label ref={promptShellRef} className="command-input-shell" htmlFor="command-input">
         <span className="prompt-glyph">{'>'}</span>
         <input
           ref={inputRef}
