@@ -333,17 +333,17 @@ export const certifications: CertificationEntry[] = [
 
 export const connect: ConnectEntry[] = [
   {
-    label: "Email",
+    label: "Email: ",
     value: "works.piyushb@gmail.com",
     href: "mailto:works.piyushb@gmail.com",
   },
   {
-    label: "LinkedIn",
+    label: "LinkedIn: ",
     value: "linkedin.com/in/piyush-bhuyan-216445230",
     href: "https://linkedin.com/in/piyush-bhuyan-216445230",
   },
   {
-    label: "GitHub",
+    label: "GitHub: ",
     value: "github.com/pibuilt",
     href: "https://github.com/pibuilt",
   },
